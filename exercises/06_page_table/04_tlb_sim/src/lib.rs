@@ -18,6 +18,8 @@
 //! └───────┴──────┴──────┴───────┴───────┘
 //! ```
 
+use std::result;
+
 /// TLB 条目
 #[derive(Clone, Debug)]
 pub struct TlbEntry {
@@ -91,7 +93,15 @@ impl Tlb {
         // TODO: 遍历 self.entries，查找 valid && vpn 匹配 && asid 匹配的条目
         // 命中：self.stats.hits += 1，返回 Some(entry.ppn)
         // 未命中：self.stats.misses += 1，返回 None
-        todo!()
+
+        for entry in self.entries.iter() {
+            if entry.valid == true && entry.asid == asid && entry.vpn == vpn {
+                self.stats.hits += 1;
+                return Some(entry.ppn);
+            }
+        }
+        self.stats.misses += 1;
+        None
     }
 
     /// 将一条新映射插入 TLB。
@@ -108,7 +118,24 @@ impl Tlb {
         //       if entry.valid && entry.vpn == vpn && entry.asid == asid { 更新并返回 }
         //   }
         //   写入 fifo_ptr 位置，然后推进指针
-        todo!()
+        for entry in &mut self.entries {
+            if entry.valid && entry.vpn == vpn && entry.asid == asid {
+                entry.flags = flags;
+                entry.ppn = ppn;
+                return;
+            } 
+        }
+
+
+        let next_entry = &mut self.entries[self.fifo_ptr];
+        next_entry.asid = asid;
+        next_entry.vpn = vpn;
+        next_entry.ppn = ppn;
+        next_entry.flags = flags;
+        next_entry.valid = true;
+
+        self.fifo_ptr = (self.fifo_ptr + 1) % self.capacity;
+
     }
 
     /// 刷新整个 TLB（将所有条目标记为无效）。
@@ -116,7 +143,9 @@ impl Tlb {
     /// 这对应于 RISC-V 的 `sfence.vma`（不带参数）操作。
     pub fn flush_all(&mut self) {
         // TODO: 将所有条目的 valid 设为 false
-        todo!()
+        for entry in &mut self.entries {
+            entry.valid = false;
+        }
     }
 
     /// 刷新指定虚拟页的 TLB 条目。
@@ -124,7 +153,11 @@ impl Tlb {
     /// 对应 `sfence.vma vaddr`：只刷新匹配 `vpn` 的条目（任意 ASID）。
     pub fn flush_by_vpn(&mut self, vpn: u64) {
         // TODO: 将所有 vpn 匹配的条目标记为无效
-        todo!()
+        for entry in &mut self.entries {
+            if entry.valid && entry.vpn == vpn{
+                entry.valid = false;
+            } 
+        }
     }
 
     /// 刷新指定地址空间（ASID）的所有 TLB 条目。
@@ -132,13 +165,23 @@ impl Tlb {
     /// 对应 `sfence.vma zero, asid`：刷新该 ASID 的所有条目。
     pub fn flush_by_asid(&mut self, asid: u16) {
         // TODO: 将所有 asid 匹配的条目标记为无效
-        todo!()
+        for entry in &mut self.entries {
+            if entry.valid && entry.asid == asid {
+                entry.valid = false;
+            } 
+        }
     }
 
     /// 返回当前有效条目的数量。
     pub fn valid_count(&self) -> usize {
         // TODO: 统计 valid == true 的条目数
-        todo!()
+        let mut result = 0;
+        for entry in self.entries.iter() {
+            if entry.valid == true {
+                result += 1;
+            }
+        }
+        result
     }
 }
 
@@ -175,8 +218,7 @@ impl Mmu {
 
     /// 在页表中添加一条映射。
     pub fn add_mapping(&mut self, asid: u16, vpn: u64, ppn: u64, flags: u64) {
-        self.page_table
-            .push((asid, PageMapping { vpn, ppn, flags }));
+        self.page_table.push((asid, PageMapping { vpn, ppn, flags }));
     }
 
     /// 切换当前地址空间（ASID）。
@@ -194,7 +236,18 @@ impl Mmu {
     /// 5. 页表未命中 → 返回 None（缺页）
     pub fn translate(&mut self, vpn: u64) -> Option<u64> {
         // TODO: 实现 TLB + 页表的二级查找
-        todo!()
+        match Tlb::lookup(&mut self.tlb, vpn, self.current_asid) {
+            Some(ppn) => {return Some(ppn);},
+            None => {
+                for (pt_asid, mapping) in self.page_table.iter() {
+                    if (*pt_asid == self.current_asid) && (mapping.vpn == vpn)  {
+                        self.tlb.insert(mapping.vpn, mapping.ppn, self.current_asid, mapping.flags);
+                        return Some(mapping.ppn);
+                    }
+                }
+                return None;
+            }
+        }
     }
 }
 
@@ -413,10 +466,7 @@ mod tests {
         assert_eq!(mmu.tlb.stats.hits, 9);
         assert_eq!(mmu.tlb.stats.misses, 1);
         let rate = mmu.tlb.stats.hit_rate();
-        assert!(
-            (rate - 0.9).abs() < 1e-9,
-            "hit rate should be 0.9, got {rate}"
-        );
+        assert!((rate - 0.9).abs() < 1e-9, "hit rate should be 0.9, got {rate}");
     }
 
     #[test]

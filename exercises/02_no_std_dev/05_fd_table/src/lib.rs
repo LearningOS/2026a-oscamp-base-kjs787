@@ -38,7 +38,7 @@
 //! - fd number reuse strategy (find smallest free slot)
 //! - `Arc` reference counting and resource release
 
-use std::sync::Arc;
+use std::{os::fd, sync::Arc, vec};
 
 /// File abstraction trait — all "files" in the kernel (regular files, pipes, sockets) implement this
 pub trait File: Send + Sync {
@@ -51,13 +51,16 @@ pub struct FdTable {
     // TODO: Design the internal structure
     // Hint: use Vec<Option<Arc<dyn File>>>
     //       the index is the fd number, None means the fd is closed or unallocated
+    ftable: Vec<Option<Arc<dyn File>>>,
 }
 
 impl FdTable {
     /// Create an empty fd table
     pub fn new() -> Self {
         // TODO
-        todo!()
+        FdTable {
+            ftable: Vec::new(),
+        }
     }
 
     /// Allocate a new fd, return the fd number.
@@ -65,25 +68,63 @@ impl FdTable {
     /// Prefers reusing the smallest closed fd number; if no free slot, appends to the end.
     pub fn alloc(&mut self, file: Arc<dyn File>) -> usize {
         // TODO
-        todo!()
+        let mut fd = 0;
+        for item in &mut self.ftable {
+            match item {
+                Some(_) => fd += 1,
+                None => {
+                    *item = Some(file);
+                    return fd 
+                }
+            }
+        };
+
+        //no free slot, extend the table
+        self.ftable.push(Some(file));
+        fd
     }
 
     /// Get the file object for an fd. Returns None if the fd doesn't exist or is closed.
     pub fn get(&self, fd: usize) -> Option<Arc<dyn File>> {
-        // TODO
-        todo!()
+        match self.ftable.get(fd)? {    // ? 能否在查找错误时返回None
+            Some(file_object) => {
+                return Some(Arc::clone(file_object));
+            },
+            None => {
+                return None;
+            },
+        };
     }
 
     /// Close an fd. Returns true on success, false if the fd doesn't exist or is already closed.
     pub fn close(&mut self, fd: usize) -> bool {
         // TODO
-        todo!()
+        let item = self.ftable.get_mut(fd);
+        match item {
+            Some(slot) => {
+                if slot.take().is_some() {
+                    return true;
+                }else{
+                    return false;
+                }
+            },
+            None => return false,
+        }
     }
 
     /// Return the number of currently allocated fds (excluding closed ones)
     pub fn count(&self) -> usize {
         // TODO
-        todo!()
+        let mut fd_count = 0;
+        for item in & self.ftable {
+            match item {
+                Some(_) => fd_count += 1,
+                None => {
+                    continue;
+                }
+            }
+        };
+        fd_count
     }
 }
 
@@ -108,10 +149,7 @@ mod tests {
 
     impl MockFile {
         fn new(id: usize) -> Arc<Self> {
-            Arc::new(Self {
-                id,
-                write_log: Mutex::new(vec![]),
-            })
+            Arc::new(Self { id, write_log: Mutex::new(vec![]) })
         }
     }
 
@@ -162,10 +200,7 @@ mod tests {
         let fd2 = table.alloc(MockFile::new(2)); // fd=2
 
         assert!(table.close(fd1), "closing fd=1 should succeed");
-        assert!(
-            table.get(fd1).is_none(),
-            "get should return None after close"
-        );
+        assert!(table.get(fd1).is_none(), "get should return None after close");
 
         // Next allocation should reuse fd=1 (smallest free)
         let fd_new = table.alloc(MockFile::new(99));
@@ -177,10 +212,7 @@ mod tests {
     #[test]
     fn test_close_invalid() {
         let mut table = FdTable::new();
-        assert!(
-            !table.close(0),
-            "closing non-existent fd should return false"
-        );
+        assert!(!table.close(0), "closing non-existent fd should return false");
     }
 
     #[test]

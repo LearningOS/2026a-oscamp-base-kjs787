@@ -74,7 +74,23 @@ unsafe impl GlobalAlloc for BumpAllocator {
         // 5. Atomically update next to end using compare_exchange
         //    (if CAS fails, another thread raced — retry in a loop)
         // 6. Return the aligned address as a pointer
-        todo!()
+        loop {
+            let current = self.next.load(Ordering::SeqCst);
+            let align = layout.align();
+            let size = layout.size();
+
+            let aligned = (current + align - 1) & !(align - 1); 
+            let end = aligned + size;
+            if end > self.heap_end {
+                return null_mut();
+            }else {
+                match self.next.compare_exchange(current, end,Ordering::SeqCst,Ordering::Acquire) {
+                    Ok(_) => return aligned as *mut u8,
+                    Err(_) => continue,
+                };
+                
+            }
+        }
     }
 
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
@@ -127,10 +143,7 @@ mod tests {
         let layout = Layout::from_size_align(64, 8).unwrap();
         let p1 = unsafe { alloc.alloc(layout) } as usize;
         let p2 = unsafe { alloc.alloc(layout) } as usize;
-        assert!(
-            p1 + 64 <= p2 || p2 + 64 <= p1,
-            "two allocations must not overlap"
-        );
+        assert!(p1 + 64 <= p2 || p2 + 64 <= p1, "two allocations must not overlap");
     }
 
     #[test]
@@ -162,9 +175,6 @@ mod tests {
         alloc.reset();
         let p2 = unsafe { alloc.alloc(layout) };
         assert!(!p2.is_null(), "should be able to allocate after reset");
-        assert_eq!(
-            p1, p2,
-            "address after reset should match the first allocation"
-        );
+        assert_eq!(p1, p2, "address after reset should match the first allocation");
     }
 }

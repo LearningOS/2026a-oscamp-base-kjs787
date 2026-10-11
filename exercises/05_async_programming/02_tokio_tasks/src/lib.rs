@@ -7,6 +7,9 @@
 //! - `JoinHandle` waits for task completion
 //! - Concurrent execution between asynchronous tasks
 
+use std::vec;
+
+use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
@@ -17,7 +20,22 @@ pub async fn concurrent_squares(n: usize) -> Vec<usize> {
     // TODO: Create n asynchronous tasks, each computing i * i
     // TODO: Collect all JoinHandle
     // TODO: Await each one to get result
-    todo!()
+    let mut handles = Vec::new();
+    for i in 0..n {
+        let handle = tokio::spawn(async move{
+            i * i
+        });
+        handles.push(handle);
+    }
+
+    let mut result = Vec::new();
+    for handle in handles {
+        if let Ok(id) = handle.await {
+            result.push(id);
+        }
+    }
+    result.sort_unstable();
+    result    
 }
 
 /// Concurrently execute multiple "time-consuming" tasks (simulated with sleep), return all results.
@@ -28,7 +46,23 @@ pub async fn parallel_sleep_tasks(n: usize, duration_ms: u64) -> Vec<usize> {
     // TODO: Create asynchronous task for each id in 0..n
     // TODO: Each task sleeps specified duration and returns its own id
     // TODO: Collect all results and sort
-    todo!()
+    let mut handles = Vec::new();
+    for i in 0..n {
+        let handle = tokio::spawn(async move{
+           sleep(Duration::from_millis(duration_ms)).await;
+           i
+        });
+        handles.push(handle);
+    }
+
+     let mut result = Vec::new();
+    for handle in handles {
+        if let Ok(id) = handle.await {
+            result.push(id);
+        }
+    }
+    result.sort_unstable();
+    result    
 }
 
 #[cfg(test)]
@@ -62,10 +96,6 @@ mod tests {
 
         assert_eq!(result, vec![0, 1, 2, 3, 4]);
         // Concurrent execution, total time should be much less than 5 * 100ms
-        assert!(
-            elapsed.as_millis() < 400,
-            "Tasks should run concurrently, took {}ms",
-            elapsed.as_millis()
-        );
+        assert!(elapsed.as_millis() < 400, "Tasks should run concurrently, took {}ms", elapsed.as_millis());
     }
 }

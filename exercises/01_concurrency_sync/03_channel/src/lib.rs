@@ -18,7 +18,21 @@ pub fn simple_send_recv(items: Vec<String>) -> Vec<String> {
     // TODO: Spawn thread to send each element in items
     // TODO: In main thread, receive all messages and collect into Vec
     // Hint: When all Senders are dropped, recv() returns Err
-    todo!()
+    let (tx, rx) = mpsc::channel();
+
+    //producer
+    thread::spawn(move||{
+        for str in items {
+            tx.send(str).unwrap(); 
+        }  
+    });
+
+    //consumer
+    let mut ret = vec![];
+    for mes in rx {
+        ret.push(mes);
+    }
+    ret
 }
 
 /// Create `n_producers` producer threads, each sending a message in format `"msg from {id}"`.
@@ -30,7 +44,21 @@ pub fn multi_producer(n_producers: usize) -> Vec<String> {
     // TODO: Clone a sender for each producer
     // TODO: Remember to drop the original sender, otherwise receiver won't finish
     // TODO: Collect all messages and sort
-    todo!()
+    let (tx, rx) = mpsc::channel();
+    for id in 0..n_producers {
+        let tx = tx.clone();
+        thread::spawn(move||{
+            tx.send(format!("msg from {}",id)).unwrap();
+        });    
+    }
+    drop(tx);
+
+    let mut ret = vec![];
+    for msg in rx {
+        ret.push(msg);
+    }
+    ret.sort();
+    ret
 }
 
 #[cfg(test)]
@@ -53,14 +81,11 @@ mod tests {
     #[test]
     fn test_multi_producer() {
         let result = multi_producer(3);
-        assert_eq!(
-            result,
-            vec![
-                "msg from 0".to_string(),
-                "msg from 1".to_string(),
-                "msg from 2".to_string(),
-            ]
-        );
+        assert_eq!(result, vec![
+            "msg from 0".to_string(),
+            "msg from 1".to_string(),
+            "msg from 2".to_string(),
+        ]);
     }
 
     #[test]

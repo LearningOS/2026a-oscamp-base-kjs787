@@ -8,7 +8,7 @@
 //! - The first completed branch is executed, others are cancelled
 
 use std::future::Future;
-use tokio::time::{sleep, Duration};
+use tokio::{select, time::{Duration, sleep}};
 
 /// Async operation with timeout.
 /// If `future` completes within `timeout_ms` milliseconds, returns Some(result).
@@ -21,7 +21,12 @@ where
 {
     // TODO: Use tokio::select! to race between future and sleep
     // Or use tokio::time::timeout
-    todo!()
+//tokio::time::timeout(Duration::from_millis(timeout_ms), future);
+    
+    tokio::select!{
+        result = future => Some(result),
+        _ =  sleep(Duration::from_millis(timeout_ms)) => None,
+    }
 }
 
 /// Race two async tasks, return the result of whichever finishes first.
@@ -34,7 +39,10 @@ where
 {
     // TODO: Use tokio::select! to wait for f1 and f2
     // Return the result of whichever completes first
-    todo!()
+    tokio::select! {
+        val1 = f1 => val1,
+        val2 = f2 => val2,
+    }
 }
 
 #[cfg(test)]
@@ -49,14 +57,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_timeout_expired() {
-        let result = with_timeout(
-            async {
-                sleep(Duration::from_millis(200)).await;
-                42
-            },
-            50,
-        )
-        .await;
+        let result = with_timeout(async {
+            sleep(Duration::from_millis(200)).await;
+            42
+        }, 50).await;
         assert_eq!(result, None);
     }
 
@@ -71,8 +75,7 @@ mod tests {
                 sleep(Duration::from_millis(200)).await;
                 "slow"
             },
-        )
-        .await;
+        ).await;
         assert_eq!(result, "fast");
     }
 
@@ -87,8 +90,7 @@ mod tests {
                 sleep(Duration::from_millis(10)).await;
                 "fast"
             },
-        )
-        .await;
+        ).await;
         assert_eq!(result, "fast");
     }
 }
