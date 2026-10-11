@@ -129,8 +129,7 @@ const STACK_SIZE: usize = 1024 * 64;
 /// (stack grows down). The buffer must be kept alive for the lifetime of the context using this stack.
 pub fn alloc_stack() -> (Vec<u8>, usize) {
     let mut buffer = vec![0u8;STACK_SIZE];
-    let ptr = buffer.as_mut_ptr_range().end as usize;
-    let stack_top = ptr & !15;
+    let stack_top = buffer.as_mut_ptr_range().end as usize;
     (buffer, stack_top)
 }
 

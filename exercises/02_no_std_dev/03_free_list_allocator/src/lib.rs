@@ -121,7 +121,7 @@ unsafe impl GlobalAlloc for FreeListAllocator {
 
         while !curr.is_null() {
             let curr_addr = curr as usize;
-            if (curr_addr % (align - 1)) == 0 && (*curr).size >= size {
+            if (curr_addr % align) == 0 && (*curr).size >= size {
                 // found a block
                 *prev_ptr = (*curr).next;
                 return curr as *mut u8;

@@ -141,7 +141,7 @@ impl Scheduler {
         let mut stack = vec![0u8; STACK_SIZE];
         let stack_top = (stack.as_mut_ptr_range().end as usize) & !15;
         let mut ctx = TaskContext::default();
-        ctx.sp = stack_top as u64;
+        ctx.sp = (stack_top - 16) as u64;
         ctx.ra = thread_wrapper as usize as u64;
         self.threads.push(GreenThread {
             ctx: ctx,
@@ -191,7 +191,9 @@ impl Scheduler {
                 self.current = next;
 
                 unsafe {
-                    CURRENT_THREAD_ENTRY = self.threads[next].entry;
+                    if let Some(entry) = self.threads[next].entry.take() {
+                        CURRENT_THREAD_ENTRY = Some(entry);
+                    }
                     let old_ptr = &mut self.threads[old].ctx as *mut _;
                     let new_ptr = &self.threads[next].ctx as *const _;
                     switch_context(&mut *old_ptr, &*new_ptr);
@@ -199,6 +201,17 @@ impl Scheduler {
                 return;
             }
         }
+
+        if self.current != 0 {
+        let old = self.current;
+        self.current = 0;
+        self.threads[0].state = ThreadState::Running;
+        unsafe {
+            let old_ptr = &mut self.threads[old].ctx as *mut _;
+            let new_ptr = &self.threads[0].ctx as *const _;
+            switch_context(&mut *old_ptr, &*new_ptr);
+        }
+    }
         //todo!("round-robin find next Ready, set current Ready (if not Finished), next Running, CURRENT_THREAD_ENTRY, then switch_context")
     }
 }
